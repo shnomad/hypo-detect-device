@@ -17,9 +17,9 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stdio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -33,7 +33,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,6 +50,8 @@ SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -58,6 +59,30 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
+
+#ifdef __GNUC__
+/* With GCC, small printf (option LD Linker->Libraries->Small printf
+   set to 'Yes') calls __io_putchar() */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+/* Prescaler declaration */
+uint32_t uwPrescalerValue = 0;
+
+/* MAX30205 read buffer*/
+HAL_StatusTypeDef ret;
+
+#define MAX30205_DEV_ADDR       0x90	  // Use 8-bit address
+#define MAX30205_TEMPERATURE    0x00      // get temperature ,Read only
+#define MAX30205_CONFIGURATION  0x01      //
+#define MAX30205_THYST          0x02      //
+#define MAX30205_TOS            0x03      //
+
+int16_t raw = 0;
+float  temperature = 0.0;
+uint8_t aRxBuffer[8]={0x0,};
 
 /* USER CODE END PV */
 
@@ -74,6 +99,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_USB_PCD_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -112,28 +138,51 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DAC_Init();
-  MX_I2C1_Init();
   MX_I2C2_Init();
+  MX_USART2_UART_Init();
+  MX_TIM2_Init();
+
+  /*
+  MX_I2C1_Init();
   MX_SPI1_Init();
   MX_SPI2_Init();
   MX_SPI3_Init();
-  MX_USART2_UART_Init();
   MX_USB_PCD_Init();
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
-  /* USER CODE BEGIN 2 */
+  */
 
+  /* USER CODE BEGIN 2 */
+  printf("\n\r UART Printf Example: retarget the C library printf function to the UART\n\r");
   /* USER CODE END 2 */
 
   /* Infinite loop */
+
+
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
+
+	/*MAX30205 Test*/
+	//Temperature sensor power on
+	HAL_GPIO_WritePin(GPIOE, TEMP_POWER_CON_Pin, GPIO_PIN_SET);
+
+	//Temperature sensor communication
+	ret = HAL_I2C_Mem_Read(&hi2c2, MAX30205_DEV_ADDR, MAX30205_TEMPERATURE, 2, aRxBuffer, 2, 0xFFFF);
+	raw = aRxBuffer[0] << 8 | aRxBuffer[1];  //combine two bytes
+	temperature = raw  * 0.00390625;     // convert to temperature
+
+	printf("\n\r Current Temperatue is %f \n\r", temperature);
+
 }
 
 /**
@@ -148,7 +197,8 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -160,7 +210,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -261,6 +311,16 @@ static void MX_I2C1_Init(void)
 static void MX_I2C2_Init(void)
 {
 
+  /*MAX30205 Temperature Sensor
+   * Slave Address = 0x90
+   * Register name  				|  Address
+   * Temperature    				|   0x00
+   * Configuration  				|   0x01
+   * T HYST		    				|   0x02
+   * T OS (Over Temperature Alarm	|   0x03
+   * */
+
+
   /* USER CODE BEGIN I2C2_Init 0 */
 
   /* USER CODE END I2C2_Init 0 */
@@ -269,7 +329,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.ClockSpeed = 100000;
+  hi2c2.Init.ClockSpeed = 1000;
   hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -277,11 +337,14 @@ static void MX_I2C2_Init(void)
   hi2c2.Init.OwnAddress2 = 0;
   hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+
   if (HAL_I2C_Init(&hi2c2) != HAL_OK)
   {
     Error_Handler();
   }
+
   /* USER CODE BEGIN I2C2_Init 2 */
+
 
   /* USER CODE END I2C2_Init 2 */
 
@@ -398,6 +461,66 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+  /* Compute the prescaler value to have TIMx counter clock equal to 10000 Hz */
+  uwPrescalerValue = (uint32_t)(SystemCoreClock / 10000) - 1;
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = uwPrescalerValue;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = (10000 - 1)*3;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+  {
+    /* Starting Error */
+    Error_Handler();
+  }
+
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -577,6 +700,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
+  /*Battery Gauge LED Off*/
+  HAL_GPIO_WritePin(GPIOE, POWER_ON_OFF_IND_Pin|BAT_LED1_Pin|BAT_LED2_Pin|BAT_LED3_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : RS232_DETECT_Pin */
   GPIO_InitStruct.Pin = RS232_DETECT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -634,6 +760,20 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the EVAL_COM1 and Loop until the end of transmission */
+  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
+}
 
 /* USER CODE END 4 */
 

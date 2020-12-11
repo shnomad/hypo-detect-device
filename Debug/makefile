@@ -55,7 +55,7 @@ main-build: HypoDetectDevice.elf secondary-outputs
 
 # Tool invocations
 HypoDetectDevice.elf: $(OBJS) $(USER_OBJS) D:\1.WORK\B.PROJECT\46.HypoDetectDevice\FW\cube-version\STM32L152VCTX_FLASH.ld
-	arm-none-eabi-gcc -o "HypoDetectDevice.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\1.WORK\B.PROJECT\46.HypoDetectDevice\FW\cube-version\STM32L152VCTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="HypoDetectDevice.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "HypoDetectDevice.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\1.WORK\B.PROJECT\46.HypoDetectDevice\FW\cube-version\STM32L152VCTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="HypoDetectDevice.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
